@@ -54,15 +54,23 @@ async function registrationPost(
   base: string,
   params: Record<string, string>,
 ): Promise<unknown> {
-  const res = await fetch(`${base}${REG_PATH}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(params).toString(),
-    signal: AbortSignal.timeout(15_000),
-  })
-  // API returns 4xx for some poll states — still parse body
-  const text = await res.text()
-  try { return JSON.parse(text) } catch { return {} }
+  // Use manual timeout + clearTimeout instead of AbortSignal.timeout() to avoid
+  // a libuv assertion failure on Windows (Node.js v22+) caused by dangling handles.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error('Request timeout')), 15_000)
+  try {
+    const res = await fetch(`${base}${REG_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString(),
+      signal: controller.signal,
+    })
+    // API returns 4xx for some poll states — still parse body
+    const text = await res.text()
+    try { return JSON.parse(text) } catch { return { _raw: text } }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**
@@ -79,10 +87,25 @@ export async function feishuQRLogin(
 ): Promise<FeishuAuthResult> {
   let base = FEISHU_BASE
 
-  // 1. Init — confirm client_secret is supported
-  const init = await registrationPost(base, { action: 'init' }) as InitResponse
+  // 1. Init — confirm client_secret is supported.
+  // Try Feishu first, then Lark (some regions can only reach one of the two).
+  let init = await registrationPost(base, { action: 'init' }) as InitResponse
   if (!init.supported_auth_methods?.includes('client_secret')) {
-    throw new Error('Feishu registration does not support client_secret in this environment.')
+    // Fallback: try the Lark (international) domain
+    const larkInit = await registrationPost(LARK_BASE, { action: 'init' }) as InitResponse
+    if (larkInit.supported_auth_methods?.includes('client_secret')) {
+      base = LARK_BASE
+      init = larkInit
+    } else {
+      const feishuRaw = JSON.stringify(init)
+      const larkRaw   = JSON.stringify(larkInit)
+      throw new Error(
+        `Feishu/Lark registration init failed.\n` +
+        `  Feishu response: ${feishuRaw}\n` +
+        `  Lark   response: ${larkRaw}\n` +
+        `Please check your network connection and try again.`,
+      )
+    }
   }
 
   // 2. Begin — get device_code and QR URL
