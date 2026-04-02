@@ -45,6 +45,8 @@ npm install -g @anthropic-ai/claude-code
 | `/model [名称]` | 查看或设置当前会话的 Claude 模型 |
 | `/skills` | 列出可用 skill |
 | `/<skill> [参数]` | 运行 Claude Code skill |
+| `/allow` | 批准待确认的工具权限并重试 |
+| `/deny` | 取消待确认的工具权限 |
 | `/doctor` | 执行 Claude Code 诊断 |
 | `/info` | 查看当前会话信息 |
 | `/help` | 显示帮助 |
@@ -66,6 +68,22 @@ Skill 从 `~/.claude/skills/<名称>/SKILL.md` 和项目本地 `.claude/skills/`
 /review              → 运行 review skill
 /ship fix auth bug   → 运行 ship skill，附带额外上下文
 ```
+
+### 权限确认
+
+当 `skipPermissions` 为 `false`（默认值）时，Claude 在调用 `Write`、`Bash` 等工具前可能会触发权限确认。im-cc 会将被拦截的工具列表推送到你的手机并等待：
+
+```
+🔐 Permission required
+
+Claude wants to use:
+• Write: /src/main.ts
+• Bash: npm install express
+
+Reply /allow to proceed, or /deny to cancel.
+```
+
+发送 `/allow` 以授权并重新执行，或发送 `/deny` 取消。
 
 如需让 skill 的工具调用无需逐步确认，在配置中开启 `skipPermissions`：
 

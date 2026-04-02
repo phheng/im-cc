@@ -56,4 +56,28 @@ describe('SessionManager', () => {
       mgr.reset('unknown')
     }).not.toThrow()
   })
+
+  it('setPendingApproval stores the original message', () => {
+    mgr.getOrCreate('telegram:1', 'telegram')
+    mgr.setPendingApproval('telegram:1', 'write a file')
+    expect(mgr.getPendingApproval('telegram:1')?.originalMessage).toBe('write a file')
+  })
+
+  it('clearPendingApproval removes it', () => {
+    mgr.getOrCreate('telegram:1', 'telegram')
+    mgr.setPendingApproval('telegram:1', 'write a file')
+    mgr.clearPendingApproval('telegram:1')
+    expect(mgr.getPendingApproval('telegram:1')).toBeUndefined()
+  })
+
+  it('reset() clears pendingApproval', () => {
+    mgr.getOrCreate('telegram:1', 'telegram')
+    mgr.setPendingApproval('telegram:1', 'do something')
+    mgr.reset('telegram:1')
+    expect(mgr.getPendingApproval('telegram:1')).toBeUndefined()
+  })
+
+  it('getPendingApproval returns undefined for unknown userId', () => {
+    expect(mgr.getPendingApproval('no-such-user')).toBeUndefined()
+  })
 })

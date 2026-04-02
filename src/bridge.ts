@@ -7,7 +7,7 @@ import fs from 'fs'
 import { spawn } from 'child_process'
 import type { Config } from './config.js'
 import type { Session, SessionManager } from './session.js'
-import { runClaude } from './claude.js'
+import { runClaude, type PermissionDenial } from './claude.js'
 import { findSkill, listSkills } from './skill-loader.js'
 import type { Adapter } from './adapters/base.js'
 
@@ -23,6 +23,8 @@ Send any message to run it in Claude Code.
 \`/doctor\`           Run Claude Code diagnostics
 \`/skills\`           List available skills
 \`/<skill> [args]\`   Run a Claude Code skill
+\`/allow\`            Approve pending tool permissions and retry
+\`/deny\`             Cancel pending tool permissions
 \`/info\`             Show current session info
 \`/help\`             Show this help
 `.trim()
@@ -79,11 +81,19 @@ export class Bridge {
     return this.runClaude(session, trimmed)
   }
 
-  private async runClaude(session: Session, message: string): Promise<string> {
+  private async runClaude(
+    session: Session,
+    message: string,
+    opts?: { skipPermissions?: boolean },
+  ): Promise<string> {
     try {
-      const result = await runClaude(message, session, this.config.claude)
+      const result = await runClaude(message, session, this.config.claude, opts)
       if (result.sessionId) {
         this.sessions.updateClaudeSession(session.userId, result.sessionId)
+      }
+      if (result.permissionDenials?.length) {
+        this.sessions.setPendingApproval(session.userId, message)
+        return formatPermissionRequest(result.permissionDenials)
       }
       return result.text || '(no response)'
     } catch (err) {
@@ -150,6 +160,24 @@ export class Bridge {
         return lines.join('\n')
       }
 
+      case '/allow': {
+        const pending = this.sessions.getPendingApproval(session.userId)
+        if (!pending) {
+          return '⚠️ No pending permission request. Send a message first.'
+        }
+        this.sessions.clearPendingApproval(session.userId)
+        return this.runClaude(session, pending.originalMessage, { skipPermissions: true })
+      }
+
+      case '/deny': {
+        const pending = this.sessions.getPendingApproval(session.userId)
+        if (!pending) {
+          return '⚠️ No pending permission request to cancel.'
+        }
+        this.sessions.clearPendingApproval(session.userId)
+        return '✓ Request cancelled. No changes were made.'
+      }
+
       case '/skills': {
         const names = listSkills(session.cwd)
         if (names.length === 0) return '(no skills found in ~/.claude/skills/ or .claude/skills/)'
@@ -173,6 +201,40 @@ export class Bridge {
       }
     }
   }
+}
+
+/** Format a permission-required message for IM display. */
+function formatPermissionRequest(denials: PermissionDenial[]): string {
+  const toolList = denials
+    .map((d) => {
+      const summary = summarizeToolInput(d.tool_name, d.tool_input)
+      return `• ${d.tool_name}${summary ? `: ${summary}` : ''}`
+    })
+    .join('\n')
+
+  return [
+    '🔐 *Permission required*',
+    '',
+    'Claude wants to use:',
+    toolList,
+    '',
+    'Reply `/allow` to proceed, or `/deny` to cancel.',
+  ].join('\n')
+}
+
+function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+  const truncate = (s: string) => (s.length > 60 ? s.slice(0, 57) + '…' : s)
+  if (['Write', 'Edit', 'Read', 'NotebookEdit'].includes(toolName)) {
+    const p = input.file_path ?? input.path
+    return typeof p === 'string' ? truncate(p) : ''
+  }
+  if (toolName === 'Bash') {
+    return typeof input.command === 'string' ? truncate(input.command) : ''
+  }
+  for (const v of Object.values(input)) {
+    if (typeof v === 'string' && v.length > 0) return truncate(v)
+  }
+  return ''
 }
 
 /** Run `claude doctor` and return its output as a string. */

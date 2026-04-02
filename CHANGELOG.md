@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - **`/skills`** — lists all available Claude Code skills found in `~/.claude/skills/` and `.claude/skills/`.
 - **`/<skill> [args]`** — run a Claude Code skill by name. The skill's `SKILL.md` is passed as the prompt to Claude Code, which executes it with full tool access. Optional arguments are appended. Example: `/review`, `/ship fix auth bug`.
 - **Skill passthrough** — skills are executed via `claude -p` prompt injection (no PTY required); compatible with all platforms. Set `skipPermissions: true` in config to allow tool calls without interruption.
+- **Permission approval flow** — when Claude hits a permission wall (e.g. wants to write a file or run a shell command), im-cc sends the list of blocked tools to the IM user and waits. The user replies `/allow` to retry with permissions granted, or `/deny` to cancel. Works from anywhere, including over mobile.
+- **`/allow`** — approve a pending permission request and re-run the original message with `--dangerously-skip-permissions`.
+- **`/deny`** — cancel a pending permission request without executing anything.
 
 ---
 

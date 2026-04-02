@@ -126,4 +126,46 @@ describe('runClaude stream-json parser', () => {
     expect(spawnArgs).toContain('--resume')
     expect(spawnArgs).toContain('sess-existing')
   })
+
+  it('populates permissionDenials when result event contains permission_denials', async () => {
+    const denials = [
+      { tool_name: 'Write', tool_use_id: 'tu-1', tool_input: { file_path: '/tmp/test.ts' } },
+      { tool_name: 'Bash', tool_use_id: 'tu-2', tool_input: { command: 'npm install' } },
+    ]
+    setMockLines(() => makeProc([
+      JSON.stringify({ type: 'result', result: '', session_id: 'sess-p', permission_denials: denials }),
+    ]))
+    const result = await runClaude('hi', BASE_SESSION, BASE_CONFIG)
+    expect(result.permissionDenials).toHaveLength(2)
+    expect(result.permissionDenials?.[0].tool_name).toBe('Write')
+    expect(result.permissionDenials?.[1].tool_name).toBe('Bash')
+  })
+
+  it('permissionDenials is undefined when no denials', async () => {
+    setMockLines(() => makeProc([
+      JSON.stringify({ type: 'result', result: 'OK', session_id: 'sess-ok' }),
+    ]))
+    const result = await runClaude('hi', BASE_SESSION, BASE_CONFIG)
+    expect(result.permissionDenials).toBeUndefined()
+  })
+
+  it('overrides.skipPermissions: true adds --dangerously-skip-permissions even when config is false', async () => {
+    const { spawn } = await import('child_process')
+    setMockLines(() => makeProc([
+      JSON.stringify({ type: 'result', result: 'OK' }),
+    ]))
+    await runClaude('hi', BASE_SESSION, { command: 'claude', skipPermissions: false }, { skipPermissions: true })
+    const spawnArgs = (spawn as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as string[]
+    expect(spawnArgs).toContain('--dangerously-skip-permissions')
+  })
+
+  it('overrides.skipPermissions: false suppresses flag even when config is true', async () => {
+    const { spawn } = await import('child_process')
+    setMockLines(() => makeProc([
+      JSON.stringify({ type: 'result', result: 'OK' }),
+    ]))
+    await runClaude('hi', BASE_SESSION, { command: 'claude', skipPermissions: true }, { skipPermissions: false })
+    const spawnArgs = (spawn as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as string[]
+    expect(spawnArgs).not.toContain('--dangerously-skip-permissions')
+  })
 })

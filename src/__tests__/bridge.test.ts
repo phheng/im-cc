@@ -5,6 +5,10 @@ import type { Adapter, MessageHandler } from '../adapters/base.js'
 import type { Config } from '../config.js'
 import fs from 'fs'
 
+vi.mock('../claude.js', () => ({
+  runClaude: vi.fn().mockResolvedValue({ text: '(mocked)', sessionId: undefined }),
+}))
+
 // Minimal adapter stub
 function makeAdapter(name: string): Adapter & { fire: (userId: string, text: string) => Promise<string> } {
   let handler: MessageHandler | undefined
@@ -115,6 +119,99 @@ describe('Bridge — allowedUsers', () => {
     bridge.start()
     const reply = await adapter.fire('telegram:99', '/help')
     expect(reply).toContain('/new')
+  })
+})
+
+describe('Bridge — permission approval flow', () => {
+  let adapter: ReturnType<typeof makeAdapter>
+  let sessions: SessionManager
+  let bridge: Bridge
+
+  beforeEach(async () => {
+    adapter = makeAdapter('telegram')
+    sessions = new SessionManager(process.cwd())
+    bridge = new Bridge([adapter], sessions, BASE_CONFIG)
+    bridge.start()
+    const { runClaude } = await import('../claude.js')
+    vi.mocked(runClaude).mockReset()
+    vi.mocked(runClaude).mockResolvedValue({ text: '(mocked)', sessionId: undefined })
+  })
+
+  it('when Claude returns permission_denials, reply contains permission prompt and tool names', async () => {
+    const { runClaude } = await import('../claude.js')
+    vi.mocked(runClaude).mockResolvedValueOnce({
+      text: '',
+      permissionDenials: [
+        { tool_name: 'Write', tool_use_id: 'tu-1', tool_input: { file_path: '/src/main.ts' } },
+        { tool_name: 'Bash', tool_use_id: 'tu-2', tool_input: { command: 'npm install' } },
+      ],
+    })
+    const reply = await adapter.fire('telegram:1', 'write and install')
+    expect(reply).toContain('Permission required')
+    expect(reply).toContain('Write')
+    expect(reply).toContain('Bash')
+    expect(reply).toContain('/allow')
+  })
+
+  it('/allow with no pending returns error', async () => {
+    const reply = await adapter.fire('telegram:1', '/allow')
+    expect(reply).toContain('No pending permission request')
+  })
+
+  it('/deny with no pending returns error', async () => {
+    const reply = await adapter.fire('telegram:1', '/deny')
+    expect(reply).toContain('No pending permission request')
+  })
+
+  it('/allow after a denial re-runs with skipPermissions and clears pending', async () => {
+    const { runClaude } = await import('../claude.js')
+    // First call: permission denied
+    vi.mocked(runClaude).mockResolvedValueOnce({
+      text: '',
+      permissionDenials: [
+        { tool_name: 'Write', tool_use_id: 'tu-1', tool_input: { file_path: '/src/main.ts' } },
+      ],
+    })
+    // Second call (after /allow): success
+    vi.mocked(runClaude).mockResolvedValueOnce({ text: 'File written.' })
+
+    await adapter.fire('telegram:1', 'write a file')
+    const reply = await adapter.fire('telegram:1', '/allow')
+
+    expect(reply).toBe('File written.')
+    // Verify the second call used skipPermissions override
+    const calls = vi.mocked(runClaude).mock.calls
+    expect(calls[1][3]).toEqual({ skipPermissions: true })
+    // Pending should be cleared
+    expect(sessions.getPendingApproval('telegram:1')).toBeUndefined()
+  })
+
+  it('/deny after a denial returns cancellation and clears pending', async () => {
+    const { runClaude } = await import('../claude.js')
+    vi.mocked(runClaude).mockResolvedValueOnce({
+      text: '',
+      permissionDenials: [
+        { tool_name: 'Bash', tool_use_id: 'tu-1', tool_input: { command: 'rm -rf dist' } },
+      ],
+    })
+    await adapter.fire('telegram:1', 'clean build')
+    const reply = await adapter.fire('telegram:1', '/deny')
+    expect(reply).toContain('cancelled')
+    expect(sessions.getPendingApproval('telegram:1')).toBeUndefined()
+  })
+
+  it('/new clears pending approval (subsequent /allow returns no-pending error)', async () => {
+    const { runClaude } = await import('../claude.js')
+    vi.mocked(runClaude).mockResolvedValueOnce({
+      text: '',
+      permissionDenials: [
+        { tool_name: 'Write', tool_use_id: 'tu-1', tool_input: { file_path: '/x' } },
+      ],
+    })
+    await adapter.fire('telegram:1', 'do something')
+    await adapter.fire('telegram:1', '/new')
+    const reply = await adapter.fire('telegram:1', '/allow')
+    expect(reply).toContain('No pending')
   })
 })
 

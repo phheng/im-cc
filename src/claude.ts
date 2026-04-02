@@ -10,9 +10,16 @@ import { createInterface } from 'readline'
 import type { ClaudeConfig } from './config.js'
 import type { Session } from './session.js'
 
+export interface PermissionDenial {
+  tool_name: string
+  tool_use_id: string
+  tool_input: Record<string, unknown>
+}
+
 export interface RunResult {
   text: string
   sessionId?: string
+  permissionDenials?: PermissionDenial[]
 }
 
 interface StreamEvent {
@@ -20,6 +27,7 @@ interface StreamEvent {
   session_id?: string
   result?: string
   is_error?: boolean
+  permission_denials?: PermissionDenial[]
   message?: {
     content: Array<{ type: string; text: string }>
   }
@@ -29,6 +37,7 @@ export function runClaude(
   message: string,
   session: Session,
   config: ClaudeConfig,
+  overrides?: { skipPermissions?: boolean },
 ): Promise<RunResult> {
   const args: string[] = [
     '-p', message,
@@ -39,7 +48,7 @@ export function runClaude(
   const model = session.modelOverride ?? config.model
   if (model) args.push('--model', model)
   if (config.systemPrompt) args.push('--append-system-prompt', config.systemPrompt)
-  if (config.skipPermissions) args.push('--dangerously-skip-permissions')
+  if (overrides?.skipPermissions ?? config.skipPermissions) args.push('--dangerously-skip-permissions')
   if (session.claudeSessionId) args.push('--resume', session.claudeSessionId)
   if (config.extraArgs?.length) args.push(...config.extraArgs)
 
@@ -56,6 +65,7 @@ export function runClaude(
 
     let result = ''
     let newSessionId: string | undefined
+    let permissionDenials: PermissionDenial[] | undefined
     const assistantTexts: string[] = []
 
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity })
@@ -70,6 +80,9 @@ export function runClaude(
             settle(() => reject(new Error(event.result ?? 'Claude returned an error')))
           } else {
             result = event.result ?? ''
+            if (event.permission_denials?.length) {
+              permissionDenials = event.permission_denials
+            }
           }
         } else if (event.type === 'assistant' && event.message) {
           for (const c of event.message.content) {
@@ -92,7 +105,7 @@ export function runClaude(
         if (!result && code !== 0) {
           reject(new Error(stderr.trim() || `claude exited with code ${code}`))
         } else {
-          resolve({ text: result.trim(), sessionId: newSessionId })
+          resolve({ text: result.trim(), sessionId: newSessionId, permissionDenials })
         }
       })
     })

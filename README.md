@@ -44,6 +44,8 @@ npm run dev     # run without building (uses tsx)
 | `/model [name]` | Show or set the Claude model for this session |
 | `/skills` | List available Claude Code skills |
 | `/<skill> [args]` | Run a Claude Code skill |
+| `/allow` | Approve pending tool permissions and retry |
+| `/deny` | Cancel pending tool permissions |
 | `/doctor` | Run Claude Code diagnostics |
 | `/info` | Show session info |
 | `/help` | Show help |
@@ -57,6 +59,22 @@ Skills are read from `~/.claude/skills/<name>/SKILL.md` and project-local `.clau
 /review              → run the review skill
 /ship fix auth bug   → run ship skill with extra context
 ```
+
+### Permission Approval
+
+When `skipPermissions` is `false` (the default), Claude may hit a permission wall before running tools like `Write` or `Bash`. When that happens, im-cc sends you a list of the blocked tools and waits:
+
+```
+🔐 Permission required
+
+Claude wants to use:
+• Write: /src/main.ts
+• Bash: npm install express
+
+Reply /allow to proceed, or /deny to cancel.
+```
+
+Reply `/allow` to re-run with permissions granted, or `/deny` to cancel.
 
 To allow skills to run tool calls without interruption, enable `skipPermissions` in config:
 

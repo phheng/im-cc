@@ -17,6 +17,9 @@
 - **`/skills`** — 列出 `~/.claude/skills/` 和 `.claude/skills/` 下所有可用的 Claude Code skill。
 - **`/<skill> [参数]`** — 按名称运行 Claude Code skill。skill 的 `SKILL.md` 作为 prompt 传给 Claude Code，Claude 使用完整工具能力执行。可附带额外参数。示例：`/review`、`/ship fix auth bug`。
 - **Skill 透传** — skill 通过 `claude -p` prompt 注入方式执行（无需 PTY），所有平台均支持。在配置中设置 `skipPermissions: true` 可让工具调用无需逐步确认。
+- **权限确认流程** — 当 Claude 触发权限拦截（如需要写文件或执行 shell 命令）时，im-cc 会将被拦截的工具列表推送到用户 IM 端，等待用户决策。用户发送 `/allow` 即授权并重新执行原始请求，发送 `/deny` 则取消操作，不产生任何副作用。支持随时随地通过手机操作。
+- **`/allow`** — 批准待确认的权限请求，以 `--dangerously-skip-permissions` 重新运行原始消息。
+- **`/deny`** — 取消待确认的权限请求，不执行任何操作。
 
 ---
 

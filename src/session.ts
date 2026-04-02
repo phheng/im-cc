@@ -1,3 +1,8 @@
+export interface PendingApproval {
+  /** The original user message that triggered the permission wall */
+  originalMessage: string
+}
+
 export interface Session {
   /** Unique user key, e.g. "telegram:123456789" */
   userId: string
@@ -10,6 +15,8 @@ export interface Session {
   /** Per-session model override — takes precedence over config.claude.model */
   modelOverride?: string
   lastActivity: Date
+  /** Set when Claude hits a permission wall; cleared after /allow or /deny */
+  pendingApproval?: PendingApproval
 }
 
 export class SessionManager {
@@ -50,11 +57,26 @@ export class SessionManager {
     if (s) s.modelOverride = model
   }
 
-  /** Reset conversation (keep cwd and modelOverride, clear Claude session ID) */
+  setPendingApproval(userId: string, originalMessage: string): void {
+    const s = this.sessions.get(userId)
+    if (s) s.pendingApproval = { originalMessage }
+  }
+
+  clearPendingApproval(userId: string): void {
+    const s = this.sessions.get(userId)
+    if (s) s.pendingApproval = undefined
+  }
+
+  getPendingApproval(userId: string): PendingApproval | undefined {
+    return this.sessions.get(userId)?.pendingApproval
+  }
+
+  /** Reset conversation (keep cwd and modelOverride, clear Claude session ID and pending approval) */
   reset(userId: string): void {
     const s = this.sessions.get(userId)
     if (s) {
       s.claudeSessionId = undefined
+      s.pendingApproval = undefined
       s.lastActivity = new Date()
     }
   }
