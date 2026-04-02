@@ -1,0 +1,56 @@
+{
+  "name": "im-cc",
+  "version": "1.1.0",
+  "description": "Control Claude Code from your phone via Telegram, Feishu, or WeChat",
+  "type": "module",
+  "bin": {
+    "imcc": "bin/imcc.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "npm run build"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "telegram",
+    "feishu",
+    "lark",
+    "wechat",
+    "im",
+    "ai",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phheng/im-cc.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "@larksuiteoapi/node-sdk": "^1.4.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "telegram": "^2.26.22",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.9"
+  }
+}
